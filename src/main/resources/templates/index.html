@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PokéDex - Pokémon Search</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔴 PokéDex 🔴</h1>
+            <p class="subtitle">Search for your favorite Pokémon</p>
+        </header>
+
+        <div class="search-section">
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="Enter Pokémon name or ID..."
+                autocomplete="off"
+            >
+            <button id="searchBtn">Search</button>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            <p>Loading...</p>
+        </div>
+
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="pokemonCard" class="pokemon-card" style="display: none;">
+            <div class="card-content">
+                <div class="image-section">
+                    <img id="pokemonImage" src="" alt="Pokemon Image">
+                    <div class="pokemon-id">#<span id="pokemonId"></span></div>
+                </div>
+
+                <div class="info-section">
+                    <h2 id="pokemonName"></h2>
+
+                    <div class="types">
+                        <label>Types:</label>
+                        <div id="typesList" class="tags-list"></div>
+                    </div>
+
+                    <div class="basic-info">
+                        <div class="info-item">
+                            <span class="label">Height:</span>
+                            <span id="pokemonHeight"></span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Weight:</span>
+                            <span id="pokemonWeight"></span>
+                        </div>
+                    </div>
+
+                    <div class="abilities">
+                        <label>Abilities:</label>
+                        <div id="abilitiesList" class="tags-list"></div>
+                    </div>
+
+                    <div class="description">
+                        <label>Description:</label>
+                        <p id="pokemonDescription"></p>
+                    </div>
+
+                    <div class="stats">
+                        <label>Stats:</label>
+                        <div id="statsList" class="stats-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/script.js"></script>
+</body>
+</html>
