@@ -6,9 +6,10 @@
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     min-height: 100vh;
     padding: 20px;
+    color: #e0e0e0;
 }
 
 .container {
@@ -98,9 +99,9 @@ header h1 {
 
 /* HERO SECTION */
 .hero-section {
-    background: white;
+    background: #0f3460;
     border-radius: 12px 12px 0 0;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     animation: slideUp 0.5s ease-out;
 }
@@ -110,7 +111,7 @@ header h1 {
     grid-template-columns: 250px 1fr;
     gap: 40px;
     padding: 40px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
 }
 
 .pokemon-hero-image {
@@ -166,21 +167,41 @@ header h1 {
     border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
+/* Type-specific colors */
+.type-normal { background: #A8A878; }
+.type-fire { background: #F08030; }
+.type-water { background: #6890F0; }
+.type-electric { background: #F8D030; color: #333; }
+.type-grass { background: #78C850; }
+.type-ice { background: #98D8D8; }
+.type-fighting { background: #C03028; }
+.type-poison { background: #A040A0; }
+.type-ground { background: #E0C068; color: #333; }
+.type-flying { background: #A890F0; }
+.type-psychic { background: #F85888; }
+.type-bug { background: #A8B820; }
+.type-rock { background: #B8A038; }
+.type-ghost { background: #705898; }
+.type-dragon { background: #7038F8; }
+.type-dark { background: #705848; }
+.type-steel { background: #B8B8D0; }
+.type-fairy { background: #EE99AC; color: #333; }
+
 /* TABS INTERFACE */
 .tabs-container {
     display: flex;
-    background: white;
-    border-bottom: 2px solid #f0f0f0;
+    background: #16213e;
+    border-bottom: 2px solid #0f3460;
     overflow-x: auto;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 .tab-button {
     flex: 1;
     padding: 16px;
     border: none;
-    background: white;
-    color: #555;
+    background: #16213e;
+    color: #a0a0a0;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -191,19 +212,19 @@ header h1 {
 }
 
 .tab-button:hover {
-    background: #f9f9f9;
-    color: #667eea;
+    background: #1f2f4d;
+    color: #00d4ff;
 }
 
 .tab-button.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: #00d4ff;
+    border-bottom-color: #00d4ff;
 }
 
 .tab-content {
     display: none;
     padding: 40px;
-    background: white;
+    background: #1a1a2e;
     animation: fadeIn 0.3s ease-out;
 }
 
@@ -213,21 +234,22 @@ header h1 {
 
 /* INFO BOXES */
 .info-box {
-    background: #f9f9f9;
-    border-left: 4px solid #667eea;
+    background: #16213e;
+    border-left: 4px solid #00d4ff;
     padding: 20px;
     border-radius: 6px;
     margin-bottom: 20px;
+    color: #e0e0e0;
 }
 
 .info-box h3 {
-    color: #333;
+    color: #00d4ff;
     margin-bottom: 15px;
     font-size: 18px;
 }
 
 .info-box h4 {
-    color: #555;
+    color: #a0a0a0;
     margin-bottom: 10px;
     font-size: 14px;
     text-transform: uppercase;
@@ -238,7 +260,7 @@ header h1 {
     display: flex;
     justify-content: space-between;
     padding: 8px 0;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #0f3460;
 }
 
 .info-item-row:last-child {
@@ -247,7 +269,7 @@ header h1 {
 
 .info-label {
     font-weight: 600;
-    color: #666;
+    color: #a0a0a0;
 }
 
 .full-width {
@@ -269,15 +291,15 @@ header h1 {
 }
 
 .effectiveness-column {
-    background: white;
+    background: #16213e;
     padding: 15px;
     border-radius: 6px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #0f3460;
 }
 
 .effectiveness-column h4 {
     margin-bottom: 12px;
-    color: #333;
+    color: #00d4ff;
 }
 
 .type-tags {
@@ -299,7 +321,7 @@ header h1 {
 
 /* STATS */
 .stats-container {
-    background: white;
+    background: #16213e;
     padding: 20px;
     border-radius: 8px;
 }
@@ -319,22 +341,22 @@ header h1 {
 .stat-name {
     min-width: 120px;
     font-weight: 600;
-    color: #555;
+    color: #a0a0a0;
     text-transform: capitalize;
 }
 
 .stat-bar {
     flex: 1;
     height: 28px;
-    background: #e0e0e0;
+    background: #0f3460;
     border-radius: 14px;
     overflow: hidden;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .stat-fill {
     height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, #00d4ff 0%, #0099cc 100%);
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -353,16 +375,16 @@ header h1 {
 }
 
 .moves-section {
-    background: white;
+    background: #16213e;
     padding: 20px;
     border-radius: 8px;
 }
 
 .moves-section h3 {
-    color: #333;
+    color: #00d4ff;
     margin-bottom: 15px;
     font-size: 18px;
-    border-bottom: 2px solid #667eea;
+    border-bottom: 2px solid #00d4ff;
     padding-bottom: 10px;
 }
 
@@ -375,21 +397,22 @@ header h1 {
 }
 
 .move-card {
-    background: #f9f9f9;
-    border-left: 4px solid #667eea;
+    background: #0f3460;
+    border-left: 4px solid #00d4ff;
     padding: 12px;
     border-radius: 4px;
     transition: all 0.2s ease;
+    color: #e0e0e0;
 }
 
 .move-card:hover {
-    background: #f0f0f0;
+    background: #16213e;
     transform: translateX(5px);
 }
 
 .move-name {
     font-weight: 600;
-    color: #333;
+    color: #00d4ff;
     text-transform: capitalize;
     margin-bottom: 6px;
 }
@@ -410,22 +433,22 @@ header h1 {
 }
 
 .move-stat {
-    background: #e0e0e0;
-    color: #333;
+    background: #1f2f4d;
+    color: #a0a0a0;
     padding: 3px 8px;
     border-radius: 4px;
 }
 
 .move-description {
     font-size: 12px;
-    color: #666;
+    color: #808080;
     margin-top: 6px;
     font-style: italic;
 }
 
 /* EVOLUTION CHAIN */
 .evolution-chain {
-    background: white;
+    background: #16213e;
     padding: 40px;
     border-radius: 8px;
     display: flex;
@@ -444,7 +467,7 @@ header h1 {
 .evolution-pokemon {
     font-size: 14px;
     font-weight: 600;
-    color: #333;
+    color: #00d4ff;
     text-transform: capitalize;
     margin-bottom: 10px;
 }
@@ -453,12 +476,13 @@ header h1 {
     text-align: center;
     font-size: 24px;
     flex: 0;
+    color: #00d4ff;
 }
 
 .evolution-details {
     font-size: 12px;
-    color: #666;
-    background: #f9f9f9;
+    color: #a0a0a0;
+    background: #0f3460;
     padding: 8px;
     border-radius: 4px;
     margin-top: 8px;
@@ -472,17 +496,18 @@ header h1 {
 }
 
 .ability-card {
-    background: white;
+    background: #16213e;
     padding: 20px;
     border-radius: 8px;
-    border-left: 4px solid #667eea;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border-left: 4px solid #00d4ff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    color: #e0e0e0;
 }
 
 .ability-name {
     font-size: 18px;
     font-weight: 600;
-    color: #333;
+    color: #00d4ff;
     text-transform: capitalize;
     margin-bottom: 8px;
 }
@@ -499,13 +524,13 @@ header h1 {
 }
 
 .ability-effect {
-    color: #666;
+    color: #a0a0a0;
     font-size: 14px;
     margin-bottom: 8px;
 }
 
 .ability-description {
-    color: #888;
+    color: #808080;
     font-size: 13px;
     font-style: italic;
     line-height: 1.6;

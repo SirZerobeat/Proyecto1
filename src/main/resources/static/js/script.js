@@ -65,7 +65,7 @@ function displayPokemon(pokemon) {
     if (pokemon.types && pokemon.types.length > 0) {
         pokemon.types.forEach(type => {
             const tag = document.createElement('span');
-            tag.className = 'type-tag';
+            tag.className = `type-tag type-${type.toLowerCase()}`;
             tag.textContent = type;
             typesList.appendChild(tag);
         });
@@ -417,7 +417,7 @@ function switchTab(tabName) {
 
 function createTypeTag(type) {
     const tag = document.createElement('span');
-    tag.className = 'tag';
+    tag.className = `tag type-${type.toLowerCase()}`;
     tag.textContent = type;
     return tag;
 }

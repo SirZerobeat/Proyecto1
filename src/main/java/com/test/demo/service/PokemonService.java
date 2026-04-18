@@ -190,7 +190,7 @@ public class PokemonService {
 
                 if (versionDetails == null || versionDetails.isEmpty()) continue;
 
-                // Get the latest version detail
+                // Use latest version (last in list)
                 Map<String, Object> latestVersion = versionDetails.get(versionDetails.size() - 1);
                 Map<String, Object> learnMethod = (Map<String, Object>) latestVersion.get("move_learn_method");
                 String methodName = (String) learnMethod.get("name");
@@ -209,9 +209,27 @@ public class PokemonService {
                     learnInfo.setLearnMethod(methodName);
                     learnInfo.setLevel(level);
 
-                    // Determine machine type if applicable
+                    // For machines, try to fetch from move's machines field
                     if ("machine".equals(methodName)) {
-                        String machineType = determineMachineType(moveName, (Map<String, Object>) moveDetail.get("machines"));
+                        List<Map<String, Object>> machines = (List<Map<String, Object>>) moveDetail.get("machines");
+                        String machineType = "TM"; // Default to TM
+                        if (machines != null && !machines.isEmpty()) {
+                            // Get the latest machine type from the last entry
+                            Map<String, Object> latestMachine = machines.get(machines.size() - 1);
+                            Map<String, Object> versionGroupData = (Map<String, Object>) latestMachine.get("version_group");
+                            String versionGroupName = (String) versionGroupData.get("name");
+
+                            // Determine machine type based on version/generation
+                            machineType = determineMachineTypeByVersion(versionGroupName);
+                            Map<String, Object> machineItemData = (Map<String, Object>) latestMachine.get("item");
+                            if (machineItemData != null) {
+                                String itemName = (String) machineItemData.get("name");
+                                // Extract TM/HM number from item name if possible
+                                if (itemName != null && itemName.matches(".*\\d+.*")) {
+                                    machineType = itemName.toUpperCase();
+                                }
+                            }
+                        }
                         learnInfo.setMachineType(machineType);
                     }
 
@@ -228,6 +246,29 @@ public class PokemonService {
         }
 
         return movesByMethod;
+    }
+
+    private String determineMachineTypeByVersion(String versionGroupName) {
+        // Latest Pokemon games and their machine types
+        if (versionGroupName == null) return "TM";
+
+        // Scarlet/Violet uses TM
+        if (versionGroupName.contains("scarlet") || versionGroupName.contains("violet")) {
+            return "TM (Latest)";
+        }
+        // Sword/Shield uses TM
+        if (versionGroupName.contains("sword") || versionGroupName.contains("shield")) {
+            return "TM";
+        }
+        // Lets Go uses TM/HM
+        if (versionGroupName.contains("lets-go")) {
+            return "TM/HM";
+        }
+        // Sun/Moon uses TM
+        if (versionGroupName.contains("sun") || versionGroupName.contains("moon")) {
+            return "TM";
+        }
+        return "TM";
     }
 
     private MoveDetail extractMoveDetail(Map<String, Object> moveData, String moveName) {
@@ -250,13 +291,7 @@ public class PokemonService {
                 damageClass, description, priority, effect, effectChance, target);
     }
 
-    private String determineMachineType(String moveName, Map<String, Object> machines) {
-        if (machines == null) return "TM";
-        // Simple heuristic - in real implementation, would need to check generation
-        return "TM";
-    }
-
-    private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
+private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
         List<String> weaknesses = new ArrayList<>();
         List<String> resistances = new ArrayList<>();
         List<String> immunities = new ArrayList<>();
@@ -340,27 +375,63 @@ public class PokemonService {
     private void parseEvolutionChain(Map<String, Object> chain, String evolvesFrom,
                                      List<EvolutionDetail> result) {
         try {
-            Map<String, Object> species = (Map<String, Object>) chain.get("species");
-            String speciesName = (String) species.get("name");
+            if (chain == null) return;
 
+            Map<String, Object> species = (Map<String, Object>) chain.get("species");
+            if (species == null) return;
+
+            String speciesName = (String) species.get("name");
+            if (speciesName == null) return;
+
+            // If this is not the first entry, it's an evolution
             if (evolvesFrom != null) {
                 EvolutionDetail detail = new EvolutionDetail();
                 detail.setEvolvesFrom(evolvesFrom);
                 detail.setEvolvesTo(speciesName);
 
-                Map<String, Object> evolutionDetails = (Map<String, Object>) chain.get("evolution_details");
+                // Get evolution details
+                List<Map<String, Object>> evolutionDetails = (List<Map<String, Object>>) chain.get("evolution_details");
                 if (evolutionDetails != null && !evolutionDetails.isEmpty()) {
-                    Map<String, Object> detail_map = (Map<String, Object>) ((List<?>) evolutionDetails).get(0);
-                    detail.setMethod((String) detail_map.get("trigger"));
-                    detail.setMinLevel((Integer) detail_map.get("min_level"));
-                    if (detail_map.get("item") != null) {
-                        detail.setItem(((Map<String, Object>) detail_map.get("item")).get("name").toString());
+                    Map<String, Object> evoDetail = evolutionDetails.get(0);
+
+                    // Extract trigger
+                    Map<String, Object> triggerMap = (Map<String, Object>) evoDetail.get("trigger");
+                    if (triggerMap != null) {
+                        String trigger = (String) triggerMap.get("name");
+                        detail.setMethod(trigger != null ? trigger : "Unknown");
                     }
+
+                    // Extract level
+                    Object minLevelObj = evoDetail.get("min_level");
+                    if (minLevelObj != null) {
+                        detail.setMinLevel(((Number) minLevelObj).intValue());
+                    }
+
+                    // Extract item
+                    Map<String, Object> itemMap = (Map<String, Object>) evoDetail.get("item");
+                    if (itemMap != null) {
+                        detail.setItem((String) itemMap.get("name"));
+                    }
+
+                    // Build trigger description
+                    StringBuilder triggerDesc = new StringBuilder();
+                    if (detail.getMethod() != null) {
+                        triggerDesc.append(capitalizeFirst(detail.getMethod()));
+                    }
+                    if (detail.getMinLevel() != null) {
+                        triggerDesc.append(" at Lv. ").append(detail.getMinLevel());
+                    }
+                    if (detail.getItem() != null) {
+                        triggerDesc.append(" with ").append(capitalizeFirst(detail.getItem()));
+                    }
+
+                    detail.setTrigger(triggerDesc.length() > 0 ? triggerDesc.toString() : "Special");
                 }
 
                 result.add(detail);
             }
 
+            // Parse subsequent evolutions
             List<Map<String, Object>> evolvesTo = (List<Map<String, Object>>) chain.get("evolves_to");
             if (evolvesTo != null) {
                 for (Map<String, Object> nextEvolution : evolvesTo) {
@@ -370,6 +441,11 @@ public class PokemonService {
         } catch (Exception e) {
             // Continue parsing
         }
+    }
+
+    private String capitalizeFirst(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
     }
 
     private PokemonSpeciesInfo fetchSpeciesInfo(Map<String, Object> speciesData) {
