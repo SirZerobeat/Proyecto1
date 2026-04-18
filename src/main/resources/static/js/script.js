@@ -140,31 +140,37 @@ function displayTypeEffectiveness(pokemon) {
     // Weaknesses
     if (pokemon.typeEffectiveness.weaknessesTo && pokemon.typeEffectiveness.weaknessesTo.length > 0) {
         pokemon.typeEffectiveness.weaknessesTo.forEach(type => {
-            const tag = createTypeTag(type);
+            const tag = document.createElement('span');
+            tag.className = `tag type-${type.toLowerCase()}`;
+            tag.textContent = type;
             weaknessList.appendChild(tag);
         });
     } else {
-        weaknessList.innerHTML = '<span style="color: #999;">None</span>';
+        weaknessList.innerHTML = '<span style="color: #808080;">None</span>';
     }
 
     // Resistances
     if (pokemon.typeEffectiveness.resistances && pokemon.typeEffectiveness.resistances.length > 0) {
         pokemon.typeEffectiveness.resistances.forEach(type => {
-            const tag = createTypeTag(type);
+            const tag = document.createElement('span');
+            tag.className = `tag type-${type.toLowerCase()}`;
+            tag.textContent = type;
             resistancesList.appendChild(tag);
         });
     } else {
-        resistancesList.innerHTML = '<span style="color: #999;">None</span>';
+        resistancesList.innerHTML = '<span style="color: #808080;">None</span>';
     }
 
     // Immunities
     if (pokemon.typeEffectiveness.immunities && pokemon.typeEffectiveness.immunities.length > 0) {
         pokemon.typeEffectiveness.immunities.forEach(type => {
-            const tag = createTypeTag(type);
+            const tag = document.createElement('span');
+            tag.className = `tag type-${type.toLowerCase()}`;
+            tag.textContent = type;
             immunitiesList.appendChild(tag);
         });
     } else {
-        immunitiesList.innerHTML = '<span style="color: #999;">None</span>';
+        immunitiesList.innerHTML = '<span style="color: #808080;">None</span>';
     }
 }
 
@@ -219,7 +225,7 @@ function displayMoveList(elementId, moves) {
     container.innerHTML = '';
 
     if (!moves || moves.length === 0) {
-        container.innerHTML = '<p style="color: #999;">No moves available</p>';
+        container.innerHTML = '<p style="color: #808080;">No moves available</p>';
         return;
     }
 
@@ -234,9 +240,9 @@ function displayMoveList(elementId, moves) {
         const moveMeta = document.createElement('div');
         moveMeta.className = 'move-meta';
 
-        // Type
+        // Type with color
         const typeTag = document.createElement('span');
-        typeTag.className = 'move-type';
+        typeTag.className = `move-type type-${moveInfo.move.type.toLowerCase()}`;
         typeTag.textContent = moveInfo.move.type;
         moveMeta.appendChild(typeTag);
 
@@ -278,12 +284,28 @@ function displayMoveList(elementId, moves) {
             moveMeta.appendChild(priorityTag);
         }
 
+        // Target
+        if (moveInfo.move.target) {
+            const targetTag = document.createElement('span');
+            targetTag.className = 'move-stat';
+            targetTag.textContent = `Target: ${capitalizeFirst(moveInfo.move.target)}`;
+            moveMeta.appendChild(targetTag);
+        }
+
         // Level (if applicable)
         if (moveInfo.level) {
             const levelTag = document.createElement('span');
             levelTag.className = 'move-stat';
             levelTag.textContent = `Lv. ${moveInfo.level}`;
             moveMeta.appendChild(levelTag);
+        }
+
+        // Machine type
+        if (moveInfo.machineType) {
+            const machineTag = document.createElement('span');
+            machineTag.className = 'move-stat';
+            machineTag.textContent = moveInfo.machineType;
+            moveMeta.appendChild(machineTag);
         }
 
         moveCard.appendChild(moveName);
@@ -306,13 +328,19 @@ function displayEvolutions(pokemon) {
     evolutionChain.innerHTML = '';
 
     if (!pokemon.evolutions || pokemon.evolutions.length === 0) {
-        evolutionChain.innerHTML = '<p style="text-align: center; color: #999;">This Pokémon has no evolutions</p>';
+        evolutionChain.innerHTML = '<p style="text-align: center; color: #808080;">This Pokémon has no evolutions</p>';
         return;
     }
 
     // Display current pokemon first
     const currentNode = document.createElement('div');
     currentNode.className = 'evolution-node';
+
+    const currentImage = document.createElement('img');
+    currentImage.src = pokemon.imageUrl || pokemon.officialArtwork;
+    currentImage.alt = pokemon.name;
+    currentImage.className = 'evolution-image';
+    currentNode.appendChild(currentImage);
 
     const currentName = document.createElement('div');
     currentName.className = 'evolution-pokemon';
@@ -321,8 +349,23 @@ function displayEvolutions(pokemon) {
     currentNode.appendChild(currentName);
     evolutionChain.appendChild(currentNode);
 
-    // Display evolutions
+    // Display evolutions - filter to only show actual evolutions (not the current pokemon repeated)
+    const uniqueEvolutions = [];
+    const seenSpecies = new Set([pokemon.name.toLowerCase()]);
+
     pokemon.evolutions.forEach(evo => {
+        if (evo.evolvesTo && !seenSpecies.has(evo.evolvesTo.toLowerCase())) {
+            uniqueEvolutions.push(evo);
+            seenSpecies.add(evo.evolvesTo.toLowerCase());
+        }
+    });
+
+    if (uniqueEvolutions.length === 0) {
+        evolutionChain.innerHTML = '<p style="text-align: center; color: #808080;">No valid evolutions found</p>';
+        return;
+    }
+
+    uniqueEvolutions.forEach(evo => {
         const arrow = document.createElement('div');
         arrow.className = 'evolution-arrow';
         arrow.textContent = '→';
@@ -331,9 +374,26 @@ function displayEvolutions(pokemon) {
         const evoNode = document.createElement('div');
         evoNode.className = 'evolution-node';
 
+        // Try to get evolution image
+        const evoImage = document.createElement('img');
+        evoImage.alt = evo.evolvesTo;
+        evoImage.className = 'evolution-image';
+
+        // Fetch evolution pokemon data for image
+        fetch(`/api/pokemon/${evo.evolvesTo.toLowerCase()}`)
+            .then(response => response.json())
+            .then(data => {
+                evoImage.src = data.imageUrl || data.officialArtwork;
+            })
+            .catch(() => {
+                evoImage.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="96" height="96"%3E%3C/svg%3E';
+            });
+
+        evoNode.appendChild(evoImage);
+
         const evoName = document.createElement('div');
         evoName.className = 'evolution-pokemon';
-        evoName.textContent = evo.evolvesTo;
+        evoName.textContent = capitalizeFirst(evo.evolvesTo);
 
         evoNode.appendChild(evoName);
 
@@ -349,9 +409,6 @@ function displayEvolutions(pokemon) {
         }
         if (evo.trigger) {
             details.push(capitalizeFirst(evo.trigger));
-        }
-        if (evo.otherDetails) {
-            details.push(evo.otherDetails);
         }
 
         evoDetails.textContent = details.length > 0 ? details.join(' • ') : 'Special evolution';

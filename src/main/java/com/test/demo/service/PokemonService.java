@@ -384,13 +384,17 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
             if (speciesName == null) return;
 
             // If this is not the first entry, it's an evolution
-            if (evolvesFrom != null) {
+            if (evolvesFrom != null && !evolvesFrom.equalsIgnoreCase(speciesName)) {
                 EvolutionDetail detail = new EvolutionDetail();
                 detail.setEvolvesFrom(evolvesFrom);
                 detail.setEvolvesTo(speciesName);
 
                 // Get evolution details
                 List<Map<String, Object>> evolutionDetails = (List<Map<String, Object>>) chain.get("evolution_details");
+                String method = "Unknown";
+                Integer minLevel = null;
+                String item = null;
+
                 if (evolutionDetails != null && !evolutionDetails.isEmpty()) {
                     Map<String, Object> evoDetail = evolutionDetails.get(0);
 
@@ -398,36 +402,38 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
                     Map<String, Object> triggerMap = (Map<String, Object>) evoDetail.get("trigger");
                     if (triggerMap != null) {
                         String trigger = (String) triggerMap.get("name");
-                        detail.setMethod(trigger != null ? trigger : "Unknown");
+                        method = trigger != null ? trigger : "Unknown";
                     }
 
                     // Extract level
                     Object minLevelObj = evoDetail.get("min_level");
                     if (minLevelObj != null) {
-                        detail.setMinLevel(((Number) minLevelObj).intValue());
+                        minLevel = ((Number) minLevelObj).intValue();
                     }
 
                     // Extract item
                     Map<String, Object> itemMap = (Map<String, Object>) evoDetail.get("item");
                     if (itemMap != null) {
-                        detail.setItem((String) itemMap.get("name"));
+                        item = (String) itemMap.get("name");
                     }
-
-                    // Build trigger description
-                    StringBuilder triggerDesc = new StringBuilder();
-                    if (detail.getMethod() != null) {
-                        triggerDesc.append(capitalizeFirst(detail.getMethod()));
-                    }
-                    if (detail.getMinLevel() != null) {
-                        triggerDesc.append(" at Lv. ").append(detail.getMinLevel());
-                    }
-                    if (detail.getItem() != null) {
-                        triggerDesc.append(" with ").append(capitalizeFirst(detail.getItem()));
-                    }
-
-                    detail.setTrigger(triggerDesc.length() > 0 ? triggerDesc.toString() : "Special");
                 }
 
+                detail.setMethod(method);
+                detail.setMinLevel(minLevel);
+                detail.setItem(item);
+
+                // Build trigger description
+                StringBuilder triggerDesc = new StringBuilder();
+                triggerDesc.append(capitalizeFirst(method));
+
+                if (minLevel != null) {
+                    triggerDesc.append(" at Lv. ").append(minLevel);
+                }
+                if (item != null) {
+                    triggerDesc.append(" with ").append(capitalizeFirst(item.replace("-", " ")));
+                }
+
+                detail.setTrigger(triggerDesc.toString());
                 result.add(detail);
             }
 
