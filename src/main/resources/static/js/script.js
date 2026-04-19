@@ -8,6 +8,10 @@ const error = document.getElementById('error');
 const tabButtons = document.querySelectorAll('.tab-button');
 const tabContents = document.querySelectorAll('.tab-content');
 
+// Store current pokemon data for lazy loading
+let currentPokemon = null;
+let movesLoaded = false;
+
 // Search events
 searchBtn.addEventListener('click', searchPokemon);
 searchInput.addEventListener('keypress', (e) => {
@@ -53,6 +57,10 @@ async function searchPokemon() {
 }
 
 function displayPokemon(pokemon) {
+    // Store current pokemon for lazy loading moves
+    currentPokemon = pokemon;
+    movesLoaded = false;
+
     // Hero section
     document.getElementById('pokemonId').textContent = String(pokemon.id).padStart(4, '0');
     document.getElementById('pokemonName').textContent = pokemon.name;
@@ -77,8 +85,11 @@ function displayPokemon(pokemon) {
     // Stats tab
     displayStats(pokemon);
 
-    // Moves tab
-    displayMoves(pokemon);
+    // Moves tab - don't load immediately
+    document.getElementById('levelUpMoves').innerHTML = '<p style="text-align: center; color: #808080;">Loading moves...</p>';
+    document.getElementById('machineMoves').innerHTML = '';
+    document.getElementById('tutorMoves').innerHTML = '';
+    document.getElementById('eggMoves').innerHTML = '';
 
     // Evolution tab
     displayEvolutions(pokemon);
@@ -209,7 +220,7 @@ function displayStats(pokemon) {
 }
 
 function displayMoves(pokemon) {
-    if (!pokemon.moves) {
+    if (!pokemon.moves || Object.keys(pokemon.moves).length === 0) {
         document.getElementById('levelUpMoves').innerHTML = '<p>No moves available</p>';
         return;
     }
@@ -218,6 +229,27 @@ function displayMoves(pokemon) {
     displayMoveList('machineMoves', pokemon.moves['machine'] || []);
     displayMoveList('tutorMoves', pokemon.moves['tutor'] || []);
     displayMoveList('eggMoves', pokemon.moves['egg'] || []);
+}
+
+// New function to fetch moves asynchronously
+async function fetchAndDisplayMoves(pokemonId) {
+    try {
+        const response = await fetch(`/api/pokemon/${pokemonId}/moves`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch moves');
+        }
+        const moves = await response.json();
+
+        // Update the pokemon object with moves
+        if (currentPokemon) {
+            currentPokemon.moves = moves;
+            displayMoves(currentPokemon);
+            movesLoaded = true;
+        }
+    } catch (err) {
+        console.error('Error fetching moves:', err);
+        document.getElementById('levelUpMoves').innerHTML = '<p style="color: #808080;">Error loading moves</p>';
+    }
 }
 
 function displayMoveList(elementId, moves) {
@@ -470,6 +502,11 @@ function switchTab(tabName) {
     // Add active class to selected button and content
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(tabName).classList.add('active');
+
+    // Load moves on demand when Moves tab is clicked
+    if (tabName === 'moves' && currentPokemon && !movesLoaded) {
+        fetchAndDisplayMoves(currentPokemon.id);
+    }
 }
 
 function createTypeTag(type) {

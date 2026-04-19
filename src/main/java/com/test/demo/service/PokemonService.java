@@ -1,28 +1,60 @@
 package com.test.demo.service;
 
-import com.test.demo.dto.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.test.demo.dto.AbilityDetail;
+import com.test.demo.dto.EnhancedPokemonDetail;
+import com.test.demo.dto.EvolutionDetail;
+import com.test.demo.dto.MoveDetail;
+import com.test.demo.dto.MoveLearnInfo;
+import com.test.demo.dto.PokemonSpeciesInfo;
+import com.test.demo.dto.StatDetail;
+import com.test.demo.dto.TypeEffectiveness;
 
 @Service
 public class PokemonService {
     private final RestClient restClient;
     private static final String POKEAPI_BASE_URL = "https://pokeapi.co/api/v2";
 
+    // In-memory cache with TTL (1 hour)
+    private final Map<String, CachedPokemon> cache = new ConcurrentHashMap<>();
+    private final long CACHE_TTL_MINUTES = 60;
+
+    // Thread pool for parallel API calls
+    private final ExecutorService executorService = Executors.newFixedThreadPool(8);
+
     public PokemonService(RestClient.Builder builder) {
         this.restClient = builder.baseUrl(POKEAPI_BASE_URL).build();
     }
 
     public EnhancedPokemonDetail getPokemonByName(String name) {
+        String cacheKey = name.toLowerCase();
+
+        // Check cache first
+        CachedPokemon cached = cache.get(cacheKey);
+        if (cached != null && !cached.isExpired()) {
+            return cached.data;
+        }
+
         try {
             // Fetch Pokemon data
             Map<String, Object> pokemonData = restClient.get()
-                    .uri("/pokemon/{name}", name.toLowerCase())
+                    .uri("/pokemon/{name}", cacheKey)
                     .retrieve()
                     .body(Map.class);
 
@@ -74,19 +106,30 @@ public class PokemonService {
                 stats.add(new StatDetail(statName, baseStat));
             }
 
-            // Fetch species data for descriptions and more
-            Map<String, Object> speciesData = null;
+            // Create base detail object
+            EnhancedPokemonDetail detail = new EnhancedPokemonDetail();
+            detail.setId(id);
+            detail.setName(pokemonName);
+            detail.setImageUrl(imageUrl);
+            detail.setOfficialArtwork(officialArtwork);
+            detail.setHeight(height);
+            detail.setWeight(weight);
+            detail.setTypes(types);
+            detail.setStats(stats);
+
+            // Fetch species data in parallel with other API calls
+            Map<String, Object> speciesDataTemp = null;
             String description = null;
             String generation = null;
 
             try {
-                speciesData = restClient.get()
+                speciesDataTemp = restClient.get()
                         .uri("/pokemon-species/{id}", id)
                         .retrieve()
                         .body(Map.class);
 
-                if (speciesData != null) {
-                    List<Map<String, Object>> flavorTexts = (List<Map<String, Object>>) speciesData.get("flavor_text_entries");
+                if (speciesDataTemp != null) {
+                    List<Map<String, Object>> flavorTexts = (List<Map<String, Object>>) speciesDataTemp.get("flavor_text_entries");
                     if (flavorTexts != null && !flavorTexts.isEmpty()) {
                         for (Map<String, Object> flavor : flavorTexts) {
                             Map<String, Object> lang = (Map<String, Object>) flavor.get("language");
@@ -101,8 +144,7 @@ public class PokemonService {
                         }
                     }
 
-                    // Get generation
-                    Map<String, Object> genData = (Map<String, Object>) speciesData.get("generation");
+                    Map<String, Object> genData = (Map<String, Object>) speciesDataTemp.get("generation");
                     if (genData != null) {
                         generation = (String) genData.get("name");
                     }
@@ -111,32 +153,151 @@ public class PokemonService {
                 // Continue without species data
             }
 
-            // Create the enhanced detail object
-            EnhancedPokemonDetail detail = new EnhancedPokemonDetail();
-            detail.setId(id);
-            detail.setName(pokemonName);
-            detail.setImageUrl(imageUrl);
-            detail.setOfficialArtwork(officialArtwork);
-            detail.setHeight(height);
-            detail.setWeight(weight);
-            detail.setTypes(types);
-            detail.setStats(stats);
             detail.setDescription(description != null ? description : "No description available");
             detail.setGeneration(generation);
 
-            // Fetch enhanced data (abilities, moves, evolutions, type effectiveness, species info)
-            detail.setAbilities(fetchAbilityDetails(pokemonData, speciesData));
-            detail.setMoves(fetchMoveDetails(pokemonData));
-            detail.setTypeEffectiveness(fetchTypeEffectiveness(types));
-            detail.setEvolutions(fetchEvolutionChain(pokemonData, speciesData));
-            detail.setSpeciesInfo(fetchSpeciesInfo(speciesData));
-            detail.setSprites(extractSprites(sprites));
+            // Create final copies for use in lambdas
+            final Map<String, Object> speciesData = speciesDataTemp;
+            final List<String> typesFinal = types;
+            final Map<String, Object> pokemonDataFinal = pokemonData;
+
+            // Fetch enhanced data in parallel using CompletableFuture
+            CompletableFuture<List<AbilityDetail>> abilityFuture = CompletableFuture.supplyAsync(
+                    () -> fetchAbilityDetails(pokemonDataFinal, speciesData), executorService);
+
+            CompletableFuture<TypeEffectiveness> typeFuture = CompletableFuture.supplyAsync(
+                    () -> fetchTypeEffectiveness(typesFinal), executorService);
+
+            CompletableFuture<List<EvolutionDetail>> evolutionFuture = CompletableFuture.supplyAsync(
+                    () -> fetchEvolutionChain(pokemonDataFinal, speciesData), executorService);
+
+            CompletableFuture<PokemonSpeciesInfo> speciesFuture = CompletableFuture.supplyAsync(
+                    () -> fetchSpeciesInfo(speciesData), executorService);
+
+            // Wait for all parallel tasks to complete (with timeout)
+            CompletableFuture.allOf(abilityFuture, typeFuture, evolutionFuture, speciesFuture)
+                    .get(10, TimeUnit.SECONDS);
+
+            detail.setAbilities(abilityFuture.join());
+            detail.setTypeEffectiveness(typeFuture.join());
+            detail.setEvolutions(evolutionFuture.join());
+            detail.setSpeciesInfo(speciesFuture.join());
+
+            // Lazy load moves - empty list initially (fetch when user requests)
+            detail.setMoves(new HashMap<>());
+
+            detail.setSprites(extractSprites((Map<String, Object>) pokemonData.get("sprites")));
+
+            // Cache the result
+            cache.put(cacheKey, new CachedPokemon(detail, System.currentTimeMillis()));
 
             return detail;
 
         } catch (RestClientException e) {
             throw new RuntimeException("Pokemon not found: " + name, e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException("Request timeout - try again", e);
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching pokemon data: " + e.getMessage(), e);
         }
+    }
+
+    // New method to fetch moves on demand (lazy loading)
+    public Map<String, List<MoveLearnInfo>> getMovesByPokemonId(int pokemonId) {
+        try {
+            // Fetch Pokemon data to get moves
+            Map<String, Object> pokemonData = restClient.get()
+                    .uri("/pokemon/{id}", pokemonId)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (pokemonData != null) {
+                return fetchMovesParallel(pokemonData);
+            }
+        } catch (Exception e) {
+            // Continue without moves
+        }
+        return new HashMap<>();
+    }
+
+    private Map<String, List<MoveLearnInfo>> fetchMovesParallel(Map<String, Object> pokemonData) {
+        Map<String, List<MoveLearnInfo>> movesByMethod = new ConcurrentHashMap<>();
+        movesByMethod.put("level-up", Collections.synchronizedList(new ArrayList<>()));
+        movesByMethod.put("machine", Collections.synchronizedList(new ArrayList<>()));
+        movesByMethod.put("tutor", Collections.synchronizedList(new ArrayList<>()));
+        movesByMethod.put("egg", Collections.synchronizedList(new ArrayList<>()));
+
+        try {
+            List<Map<String, Object>> movesList = (List<Map<String, Object>>) pokemonData.get("moves");
+
+            // Process moves in parallel batches
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+            for (Map<String, Object> moveData : movesList) {
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    try {
+                        Map<String, Object> moveInfo = (Map<String, Object>) moveData.get("move");
+                        String moveName = (String) moveInfo.get("name");
+                        List<Map<String, Object>> versionDetails = (List<Map<String, Object>>) moveData.get("version_group_details");
+
+                        if (versionDetails == null || versionDetails.isEmpty()) return;
+
+                        Map<String, Object> latestVersion = versionDetails.get(versionDetails.size() - 1);
+                        Map<String, Object> learnMethod = (Map<String, Object>) latestVersion.get("move_learn_method");
+                        String methodName = (String) learnMethod.get("name");
+                        Integer level = (Integer) latestVersion.get("level_learned_at");
+
+                        Map<String, Object> moveDetail = restClient.get()
+                                .uri("/move/{name}", moveName)
+                                .retrieve()
+                                .body(Map.class);
+
+                        MoveDetail detail = extractMoveDetail(moveDetail, moveName);
+                        MoveLearnInfo learnInfo = new MoveLearnInfo();
+                        learnInfo.setMove(detail);
+                        learnInfo.setLearnMethod(methodName);
+                        learnInfo.setLevel(level);
+
+                        if ("machine".equals(methodName)) {
+                            List<Map<String, Object>> machines = (List<Map<String, Object>>) moveDetail.get("machines");
+                            String machineType = "TM";
+                            if (machines != null && !machines.isEmpty()) {
+                                Map<String, Object> latestMachine = machines.get(machines.size() - 1);
+                                Map<String, Object> versionGroupData = (Map<String, Object>) latestMachine.get("version_group");
+                                String versionGroupName = (String) versionGroupData.get("name");
+                                machineType = determineMachineTypeByVersion(versionGroupName);
+                                Map<String, Object> machineItemData = (Map<String, Object>) latestMachine.get("item");
+                                if (machineItemData != null) {
+                                    String itemName = (String) machineItemData.get("name");
+                                    if (itemName != null && itemName.matches(".*\\d+.*")) {
+                                        machineType = itemName.toUpperCase();
+                                    }
+                                }
+                            }
+                            learnInfo.setMachineType(machineType);
+                        }
+
+                        List<MoveLearnInfo> moves = movesByMethod.get(methodName);
+                        if (moves != null) {
+                            moves.add(learnInfo);
+                        }
+                    } catch (Exception e) {
+                        // Continue without this move
+                    }
+                }, executorService);
+
+                futures.add(future);
+            }
+
+            // Wait for all move fetches to complete (with timeout)
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(30, TimeUnit.SECONDS);
+
+        } catch (Exception e) {
+            // Continue without moves
+        }
+
+        return movesByMethod;
     }
 
     private List<AbilityDetail> fetchAbilityDetails(Map<String, Object> pokemonData, Map<String, Object> speciesData) {
@@ -149,7 +310,6 @@ public class PokemonService {
                 String abilityName = (String) abilityInfo.get("name");
                 boolean isHidden = (boolean) abilityData.get("is_hidden");
 
-                // Fetch ability details from API
                 try {
                     Map<String, Object> abilityDetail = restClient.get()
                             .uri("/ability/{name}", abilityName)
@@ -163,7 +323,6 @@ public class PokemonService {
 
                     abilities.add(new AbilityDetail(abilityName, isHidden, description, effect));
                 } catch (Exception e) {
-                    // Fallback without description
                     abilities.add(new AbilityDetail(abilityName, isHidden, "No description available", ""));
                 }
             }
@@ -172,103 +331,6 @@ public class PokemonService {
         }
 
         return abilities;
-    }
-
-    private Map<String, List<MoveLearnInfo>> fetchMoveDetails(Map<String, Object> pokemonData) {
-        Map<String, List<MoveLearnInfo>> movesByMethod = new HashMap<>();
-        movesByMethod.put("level-up", new ArrayList<>());
-        movesByMethod.put("machine", new ArrayList<>());
-        movesByMethod.put("tutor", new ArrayList<>());
-        movesByMethod.put("egg", new ArrayList<>());
-
-        try {
-            List<Map<String, Object>> movesList = (List<Map<String, Object>>) pokemonData.get("moves");
-            for (Map<String, Object> moveData : movesList) {
-                Map<String, Object> moveInfo = (Map<String, Object>) moveData.get("move");
-                String moveName = (String) moveInfo.get("name");
-                List<Map<String, Object>> versionDetails = (List<Map<String, Object>>) moveData.get("version_group_details");
-
-                if (versionDetails == null || versionDetails.isEmpty()) continue;
-
-                // Use latest version (last in list)
-                Map<String, Object> latestVersion = versionDetails.get(versionDetails.size() - 1);
-                Map<String, Object> learnMethod = (Map<String, Object>) latestVersion.get("move_learn_method");
-                String methodName = (String) learnMethod.get("name");
-                Integer level = (Integer) latestVersion.get("level_learned_at");
-
-                try {
-                    // Fetch move details
-                    Map<String, Object> moveDetail = restClient.get()
-                            .uri("/move/{name}", moveName)
-                            .retrieve()
-                            .body(Map.class);
-
-                    MoveDetail detail = extractMoveDetail(moveDetail, moveName);
-                    MoveLearnInfo learnInfo = new MoveLearnInfo();
-                    learnInfo.setMove(detail);
-                    learnInfo.setLearnMethod(methodName);
-                    learnInfo.setLevel(level);
-
-                    // For machines, try to fetch from move's machines field
-                    if ("machine".equals(methodName)) {
-                        List<Map<String, Object>> machines = (List<Map<String, Object>>) moveDetail.get("machines");
-                        String machineType = "TM"; // Default to TM
-                        if (machines != null && !machines.isEmpty()) {
-                            // Get the latest machine type from the last entry
-                            Map<String, Object> latestMachine = machines.get(machines.size() - 1);
-                            Map<String, Object> versionGroupData = (Map<String, Object>) latestMachine.get("version_group");
-                            String versionGroupName = (String) versionGroupData.get("name");
-
-                            // Determine machine type based on version/generation
-                            machineType = determineMachineTypeByVersion(versionGroupName);
-                            Map<String, Object> machineItemData = (Map<String, Object>) latestMachine.get("item");
-                            if (machineItemData != null) {
-                                String itemName = (String) machineItemData.get("name");
-                                // Extract TM/HM number from item name if possible
-                                if (itemName != null && itemName.matches(".*\\d+.*")) {
-                                    machineType = itemName.toUpperCase();
-                                }
-                            }
-                        }
-                        learnInfo.setMachineType(machineType);
-                    }
-
-                    List<MoveLearnInfo> moves = movesByMethod.getOrDefault(methodName, new ArrayList<>());
-                    moves.add(learnInfo);
-                    movesByMethod.put(methodName, moves);
-
-                } catch (Exception e) {
-                    // Continue without this move
-                }
-            }
-        } catch (Exception e) {
-            // Continue without moves
-        }
-
-        return movesByMethod;
-    }
-
-    private String determineMachineTypeByVersion(String versionGroupName) {
-        // Latest Pokemon games and their machine types
-        if (versionGroupName == null) return "TM";
-
-        // Scarlet/Violet uses TM
-        if (versionGroupName.contains("scarlet") || versionGroupName.contains("violet")) {
-            return "TM (Latest)";
-        }
-        // Sword/Shield uses TM
-        if (versionGroupName.contains("sword") || versionGroupName.contains("shield")) {
-            return "TM";
-        }
-        // Lets Go uses TM/HM
-        if (versionGroupName.contains("lets-go")) {
-            return "TM/HM";
-        }
-        // Sun/Moon uses TM
-        if (versionGroupName.contains("sun") || versionGroupName.contains("moon")) {
-            return "TM";
-        }
-        return "TM";
     }
 
     private MoveDetail extractMoveDetail(Map<String, Object> moveData, String moveName) {
@@ -291,7 +353,24 @@ public class PokemonService {
                 damageClass, description, priority, effect, effectChance, target);
     }
 
-private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
+    private String determineMachineTypeByVersion(String versionGroupName) {
+        if (versionGroupName == null) return "TM";
+        if (versionGroupName.contains("scarlet") || versionGroupName.contains("violet")) {
+            return "TM (Latest)";
+        }
+        if (versionGroupName.contains("sword") || versionGroupName.contains("shield")) {
+            return "TM";
+        }
+        if (versionGroupName.contains("lets-go")) {
+            return "TM/HM";
+        }
+        if (versionGroupName.contains("sun") || versionGroupName.contains("moon")) {
+            return "TM";
+        }
+        return "TM";
+    }
+
+    private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
         List<String> weaknesses = new ArrayList<>();
         List<String> resistances = new ArrayList<>();
         List<String> immunities = new ArrayList<>();
@@ -325,7 +404,6 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
             // Continue without type effectiveness
         }
 
-        // Remove duplicates
         weaknesses = new ArrayList<>(new HashSet<>(weaknesses));
         resistances = new ArrayList<>(new HashSet<>(resistances));
         immunities = new ArrayList<>(new HashSet<>(immunities));
@@ -363,7 +441,9 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
 
             if (chainData != null) {
                 Map<String, Object> chain = (Map<String, Object>) chainData.get("chain");
-                parseEvolutionChain(chain, null, evolutions);
+                // Get the base pokemon ID from the chain
+                int currentPokemonId = ((Number) pokemonData.get("id")).intValue();
+                parseEvolutionChain(chain, null, evolutions, currentPokemonId);
             }
         } catch (Exception e) {
             // Continue without evolutions
@@ -373,7 +453,7 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
     }
 
     private void parseEvolutionChain(Map<String, Object> chain, String evolvesFrom,
-                                     List<EvolutionDetail> result) {
+                                     List<EvolutionDetail> result, int currentPokemonId) {
         try {
             if (chain == null) return;
 
@@ -381,15 +461,17 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
             if (species == null) return;
 
             String speciesName = (String) species.get("name");
+            String speciesUrl = (String) species.get("url");
+            int speciesId = extractIdFromUrl(speciesUrl);
+
             if (speciesName == null) return;
 
-            // If this is not the first entry, it's an evolution
-            if (evolvesFrom != null && !evolvesFrom.equalsIgnoreCase(speciesName)) {
+            // Only add evolution if it's different from current pokemon (using ID)
+            if (evolvesFrom != null && speciesId != currentPokemonId) {
                 EvolutionDetail detail = new EvolutionDetail();
                 detail.setEvolvesFrom(evolvesFrom);
                 detail.setEvolvesTo(speciesName);
 
-                // Get evolution details
                 List<Map<String, Object>> evolutionDetails = (List<Map<String, Object>>) chain.get("evolution_details");
                 String method = "Unknown";
                 Integer minLevel = null;
@@ -398,20 +480,17 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
                 if (evolutionDetails != null && !evolutionDetails.isEmpty()) {
                     Map<String, Object> evoDetail = evolutionDetails.get(0);
 
-                    // Extract trigger
                     Map<String, Object> triggerMap = (Map<String, Object>) evoDetail.get("trigger");
                     if (triggerMap != null) {
                         String trigger = (String) triggerMap.get("name");
                         method = trigger != null ? trigger : "Unknown";
                     }
 
-                    // Extract level
                     Object minLevelObj = evoDetail.get("min_level");
                     if (minLevelObj != null) {
                         minLevel = ((Number) minLevelObj).intValue();
                     }
 
-                    // Extract item
                     Map<String, Object> itemMap = (Map<String, Object>) evoDetail.get("item");
                     if (itemMap != null) {
                         item = (String) itemMap.get("name");
@@ -422,7 +501,6 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
                 detail.setMinLevel(minLevel);
                 detail.setItem(item);
 
-                // Build trigger description
                 StringBuilder triggerDesc = new StringBuilder();
                 triggerDesc.append(capitalizeFirst(method));
 
@@ -437,21 +515,15 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
                 result.add(detail);
             }
 
-            // Parse subsequent evolutions
             List<Map<String, Object>> evolvesTo = (List<Map<String, Object>>) chain.get("evolves_to");
             if (evolvesTo != null) {
                 for (Map<String, Object> nextEvolution : evolvesTo) {
-                    parseEvolutionChain(nextEvolution, speciesName, result);
+                    parseEvolutionChain(nextEvolution, speciesName, result, currentPokemonId);
                 }
             }
         } catch (Exception e) {
             // Continue parsing
         }
-    }
-
-    private String capitalizeFirst(String str) {
-        if (str == null || str.isEmpty()) return str;
-        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
     }
 
     private PokemonSpeciesInfo fetchSpeciesInfo(Map<String, Object> speciesData) {
@@ -489,9 +561,9 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
     }
 
     private double calculateMalePercentage(int genderRate) {
-        if (genderRate == -1) return 0; // Genderless
-        if (genderRate == 0) return 100; // All male
-        if (genderRate == 8) return 0; // All female
+        if (genderRate == -1) return 0;
+        if (genderRate == 0) return 100;
+        if (genderRate == 8) return 0;
         return (8 - genderRate) * 12.5;
     }
 
@@ -545,5 +617,35 @@ private TypeEffectiveness fetchTypeEffectiveness(List<String> types) {
             // Continue
         }
         return result;
+    }
+
+    private int extractIdFromUrl(String url) {
+        if (url == null || url.isEmpty()) return 0;
+        try {
+            String[] parts = url.split("/");
+            return Integer.parseInt(parts[parts.length - 1]);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private String capitalizeFirst(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
+    }
+
+    // Cache data structure
+    private static class CachedPokemon {
+        EnhancedPokemonDetail data;
+        long timestamp;
+
+        CachedPokemon(EnhancedPokemonDetail data, long timestamp) {
+            this.data = data;
+            this.timestamp = timestamp;
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() - timestamp > 60 * 60 * 1000; // 1 hour TTL
+        }
     }
 }
